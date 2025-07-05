@@ -17,8 +17,6 @@
     "test:coverage": "npm run build && node --test --experimental-test-coverage build/test.js",
     "lint": "echo \"Linting not configured\"",
     "validate": "tsc --noEmit",
-    "prepare": "npm run build",
-    "postinstall": "npm run build",
     "health-check": "node -e \"console.log('Server health check: OK')\"",
     "audit": "npm audit --audit-level moderate",
     "security-check": "npm audit --audit-level high"

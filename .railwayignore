@@ -1,0 +1,12 @@
+# Railway ignore file
+node_modules/
+.git/
+.env
+.env.local
+*.log
+.DS_Store
+.vscode/
+src/
+tsconfig.json
+*.ts
+!build/
