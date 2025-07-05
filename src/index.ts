@@ -6,6 +6,7 @@ import { readFileSync } from "fs";
 import { z } from "zod";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
+import { createServer } from "http";
 
 // Manually load environment variables from .env file to avoid stdout pollution
 try {
@@ -46,6 +47,23 @@ const server = new McpServer({
     resources: {},
     tools: {},
   },
+});
+
+// Simple health check server for Railway
+const healthCheckPort = process.env.PORT || 3000;
+const healthServer = createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      service: 'orshot-mcp-server',
+      version: config.server.version,
+      timestamp: new Date().toISOString()
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
 });
 
 // Type definitions for Orshot API responses
@@ -339,13 +357,14 @@ async function getTemplateType(templateId: string, apiKey: string): Promise<'lib
       });
 
       if (studioResponse.ok) {
-        const studioData = await studioResponse.json();
-        const studioTemplates = studioData.templates || studioData.data || [];
+        const studioTemplates = await studioResponse.json();
+        const templatesArray = Array.isArray(studioTemplates) ? studioTemplates : [];
         
-        // Check if templateId exists in studio templates
-        const isStudioTemplate = studioTemplates.some((template: any) => 
-          template.id === templateId || template.template_id === templateId || 
-          template.id === parseInt(templateId) || template.template_id === parseInt(templateId)
+        // Check if templateId exists in studio templates (supports both numeric ID and name matching)
+        const isStudioTemplate = templatesArray.some((template: any) => 
+          template.id === templateId || 
+          template.id === parseInt(templateId) ||
+          template.name?.toLowerCase() === templateId.toLowerCase()
         );
         
         if (isStudioTemplate) {
@@ -376,7 +395,7 @@ async function getTemplateType(templateId: string, apiKey: string): Promise<'lib
       }
     }
 
-    // If not found in library and not numeric, check studio templates
+    // If not found in library and not numeric, check studio templates (including name matching)
     if (!isLikelyStudioTemplate(templateId)) {
       const studioResponse = await fetch(`${ORSHOT_API_BASE}/v1/studio/templates`, {
         headers: {
@@ -386,12 +405,13 @@ async function getTemplateType(templateId: string, apiKey: string): Promise<'lib
       });
 
       if (studioResponse.ok) {
-        const studioData = await studioResponse.json();
-        const studioTemplates = studioData.templates || studioData.data || [];
+        const studioTemplates = await studioResponse.json();
+        const templatesArray = Array.isArray(studioTemplates) ? studioTemplates : [];
         
-        // Check if templateId exists in studio templates
-        const isStudioTemplate = studioTemplates.some((template: any) => 
-          template.id === templateId || template.template_id === templateId
+        // Check if templateId exists in studio templates (supports name matching for non-numeric IDs)
+        const isStudioTemplate = templatesArray.some((template: any) => 
+          template.id === templateId || 
+          template.name?.toLowerCase() === templateId.toLowerCase()
         );
         
         if (isStudioTemplate) {
@@ -403,6 +423,45 @@ async function getTemplateType(templateId: string, apiKey: string): Promise<'lib
     return null; // Template not found in either
   } catch (error) {
     console.error("Error determining template type:", error);
+    return null;
+  }
+}
+
+// Helper function to resolve template ID from name (for studio templates)
+async function resolveStudioTemplateId(templateIdOrName: string, apiKey: string): Promise<string | null> {
+  try {
+    // If it's already a numeric ID, return as-is
+    if (isLikelyStudioTemplate(templateIdOrName)) {
+      return templateIdOrName;
+    }
+
+    // Fetch studio templates to find by name
+    const studioResponse = await fetch(`${ORSHOT_API_BASE}/v1/studio/templates`, {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (studioResponse.ok) {
+      const studioTemplates = await studioResponse.json();
+      const templatesArray = Array.isArray(studioTemplates) ? studioTemplates : [];
+      
+      // Find template by name (case-insensitive) or exact ID match
+      const matchedTemplate = templatesArray.find((template: any) => 
+        template.name?.toLowerCase() === templateIdOrName.toLowerCase() ||
+        template.id === templateIdOrName
+      );
+      
+      if (matchedTemplate) {
+        logger.debug(`Resolved template name "${templateIdOrName}" to ID: ${matchedTemplate.id}`);
+        return String(matchedTemplate.id);
+      }
+    }
+
+    return null; // Template not found
+  } catch (error) {
+    logger.error("Error resolving studio template ID", { templateIdOrName, error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -583,10 +642,10 @@ ${JSON.stringify(responseForDisplay, null, 2)}
 // Tool 2: Generate Image From Orshot Studio Template
 server.tool(
   "generate-image-from-studio",
-  "Generate an image from an Orshot Studio template using specified data modifications. Automatically maps URLs to appropriate image fields in the template.",
+  "Generate an image from an Orshot Studio template using specified data modifications. Automatically maps URLs to appropriate image fields in the template. You can use either the template ID (numeric) or template name.",
   {
     apiKey: z.string().optional().describe("Orshot API key for authentication (optional if set in environment)"),
-    templateId: z.string().describe("The ID of the Orshot Studio template to use"),
+    templateId: z.string().describe("The ID or name of the Orshot Studio template to use"),
     data: z.record(z.any()).default({}).describe("Object containing data to populate the template (e.g., dynamic content, variable replacements, URLs for images)"),
     format: z.enum(["png", "jpg", "pdf"]).default("png").describe("Output format for the generated image"),
     responseType: z.enum(["base64", "url", "binary"]).default("url").describe("Response type: base64 data, download URL, or binary data"),
@@ -607,11 +666,24 @@ server.tool(
       };
     }
 
+    // Resolve template ID from name if needed
+    const resolvedTemplateId = await resolveStudioTemplateId(templateId, actualApiKey);
+    if (!resolvedTemplateId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Studio template "${templateId}" not found. Please check the template ID or name.`,
+          },
+        ],
+      };
+    }
+
     // Auto-map modifications based on template structure
-    const mappedData = await autoMapModifications(templateId, data, actualApiKey);
+    const mappedData = await autoMapModifications(resolvedTemplateId, data, actualApiKey);
     
     const requestBody: any = {
-      templateId: templateId,
+      templateId: resolvedTemplateId,
       modifications: mappedData,
       response: {
         type: responseType,
@@ -727,10 +799,10 @@ ${JSON.stringify(responseForDisplay, null, 2)}
 // Tool 3: Generate Image (Auto-detect template type)
 server.tool(
   "generate-image",
-  "Generate an image from an Orshot template (automatically detects library vs studio template). For studio templates, automatically maps URLs to appropriate image fields.",
+  "Generate an image from an Orshot template (automatically detects library vs studio template). For studio templates, automatically maps URLs to appropriate image fields and supports template names.",
   {
     apiKey: z.string().optional().describe("Orshot API key for authentication (optional if set in environment)"),
-    templateId: z.string().describe("The ID of the template to use (will auto-detect if it's library or studio). Numeric IDs are likely studio templates."),
+    templateId: z.string().describe("The ID or name of the template to use (will auto-detect if it's library or studio). Numeric IDs are likely studio templates. Studio templates can also be referenced by name."),
     modifications: z.record(z.any()).default({}).describe("Object containing modifications/data to apply to the template (works for both library and studio templates). URLs will be auto-mapped to image fields for studio templates."),
     format: z.enum(["png", "jpg", "pdf"]).default("png").describe("Output format for the generated image"),
     responseType: z.enum(["base64", "url", "binary"]).default("url").describe("Response type: base64 data, download URL, or binary data"),
@@ -874,11 +946,24 @@ ${JSON.stringify(responseForDisplay, null, 2)}
     } else {
       // Use studio template endpoint
       
+      // Resolve template ID from name if needed
+      const resolvedTemplateId = await resolveStudioTemplateId(templateId, actualApiKey);
+      if (!resolvedTemplateId) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `❌ Studio template "${templateId}" not found. Please check the template ID or name.`,
+            },
+          ],
+        };
+      }
+      
       // Auto-map modifications based on template structure
-      const mappedModifications = await autoMapModifications(templateId, modifications, actualApiKey);
+      const mappedModifications = await autoMapModifications(resolvedTemplateId, modifications, actualApiKey);
       
       const requestBody: any = {
-        templateId: templateId,
+        templateId: resolvedTemplateId,
         modifications: mappedModifications, // Use auto-mapped modifications
         response: {
           type: responseType,
@@ -1097,49 +1182,22 @@ server.tool(
     }
 
     try {
-      // Try multiple possible endpoints for studio templates
-      let response;
-      let studioTemplates = [];
+      const response = await fetch(`${ORSHOT_API_BASE}/v1/studio/templates`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${actualApiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-      // First try the main studio templates endpoint
-      try {
-        response = await fetch(`${ORSHOT_API_BASE}/v1/studio/templates`, {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${actualApiKey}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          studioTemplates = data.templates || data.data || data || [];
-        }
-      } catch (error) {
-        console.error("Error fetching from /v1/studio/templates:", error);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // If no templates found, try alternative endpoint
-      if (studioTemplates.length === 0) {
-        try {
-          response = await fetch(`${ORSHOT_API_BASE}/v1/studio`, {
-            method: "GET",
-            headers: {
-              "Authorization": `Bearer ${actualApiKey}`,
-              "Content-Type": "application/json",
-            },
-          });
+      const studioTemplates = await response.json();
+      const templatesArray = Array.isArray(studioTemplates) ? studioTemplates : [];
 
-          if (response.ok) {
-            const data = await response.json();
-            studioTemplates = data.templates || data.data || data || [];
-          }
-        } catch (error) {
-          console.error("Error fetching from /v1/studio:", error);
-        }
-      }
-
-      if (studioTemplates.length === 0) {
+      if (templatesArray.length === 0) {
         return {
           content: [
             {
@@ -1150,19 +1208,34 @@ server.tool(
         };
       }
 
-      const templateList = studioTemplates.map((template: any, index: number) => {
-        return `${index + 1}. **${template.title || template.name || 'Untitled'}**
-   ID: ${template.id || template.template_id}
+      const templateList = templatesArray.map((template: any, index: number) => {
+        const modifications = template.modifications || [];
+        const modificationsList = modifications.length > 0 
+          ? modifications.map((mod: any) => `    - ${mod.key || mod.id}: ${mod.helpText || 'No description'} ${mod.example ? `(e.g., "${mod.example}")` : ''}`).join('\n')
+          : '    - No modifications available';
+
+        const dimensions = template.canvas_width && template.canvas_height 
+          ? `${template.canvas_width}×${template.canvas_height}px` 
+          : 'Unknown';
+
+        return `${index + 1}. **${template.name || 'Untitled'}**
+   ID: ${template.id}
    Description: ${template.description || 'No description'}
+   Dimensions: ${dimensions}
    ${template.created_at ? `Created: ${new Date(template.created_at).toLocaleDateString()}` : ''}
-   ${template.updated_at ? `Updated: ${new Date(template.updated_at).toLocaleDateString()}` : ''}`;
+   ${template.updated_at ? `Updated: ${new Date(template.updated_at).toLocaleDateString()}` : ''}
+   ${template.thumbnail_url ? `Thumbnail: ${template.thumbnail_url}` : ''}
+   Available Modifications:
+${modificationsList}`;
       }).join('\n\n');
 
       return {
         content: [
           {
             type: "text",
-            text: `Found ${studioTemplates.length} studio template(s):\n\n${templateList}`,
+            text: `Found ${templatesArray.length} studio template(s):\n\n${templateList}
+
+💡 **Tip**: You can now use either the template ID (${templatesArray[0]?.id}) or name ("${templatesArray[0]?.name}") when generating images!`,
           },
         ],
       };
@@ -1183,10 +1256,10 @@ server.tool(
 // Tool 6: Get Template Modifications
 server.tool(
   "get-template-modifications",
-  "Get available modifications for a specific template (works for both library and studio templates)",
+  "Get available modifications for a specific template (works for both library and studio templates). For studio templates, you can use either ID or name.",
   {
     apiKey: z.string().optional().describe("Orshot API key for authentication (optional if set in environment)"),
-    templateId: z.string().describe("The ID of the template to get modifications for"),
+    templateId: z.string().describe("The ID or name of the template to get modifications for"),
     templateType: z.enum(["library", "studio", "auto"]).default("auto").describe("Type of template (library, studio, or auto-detect)"),
   },
   async (args) => {
@@ -1267,7 +1340,8 @@ server.tool(
       } else if (detectedType === "studio") {
         // Get studio template modifications
         try {
-          const response = await fetch(`${ORSHOT_API_BASE}/v1/studio/template/modifications?templateId=${templateId}`, {
+          // First try to get template details from the templates endpoint
+          const templatesResponse = await fetch(`${ORSHOT_API_BASE}/v1/studio/templates`, {
             method: "GET",
             headers: {
               "Authorization": `Bearer ${actualApiKey}`,
@@ -1275,9 +1349,39 @@ server.tool(
             },
           });
 
-          if (response.ok) {
-            const modData = await response.json();
-            modifications = Array.isArray(modData) ? modData : [];
+          if (templatesResponse.ok) {
+            const templates = await templatesResponse.json();
+            const templatesArray = Array.isArray(templates) ? templates : [];
+            
+            // Find template by ID or name
+            const selectedTemplate = templatesArray.find((template: any) => 
+              template.id === templateId || 
+              template.id === parseInt(templateId) ||
+              template.name?.toLowerCase() === templateId.toLowerCase()
+            );
+
+            if (selectedTemplate && selectedTemplate.modifications) {
+              modifications = selectedTemplate.modifications;
+            }
+          }
+
+          // Fallback to the old modifications endpoint if template doesn't have modifications
+          if (modifications.length === 0) {
+            const resolvedTemplateId = await resolveStudioTemplateId(templateId, actualApiKey);
+            if (resolvedTemplateId) {
+              const response = await fetch(`${ORSHOT_API_BASE}/v1/studio/template/modifications?templateId=${resolvedTemplateId}`, {
+                method: "GET",
+                headers: {
+                  "Authorization": `Bearer ${actualApiKey}`,
+                  "Content-Type": "application/json",
+                },
+              });
+
+              if (response.ok) {
+                const modData = await response.json();
+                modifications = Array.isArray(modData) ? modData : [];
+              }
+            }
           }
         } catch (error) {
           console.error("Error fetching studio template modifications:", error);
@@ -1297,10 +1401,11 @@ server.tool(
 
       const modificationsList = modifications.map((mod: any, index: number) => {
         const key = mod.key || mod.id;
-        const description = mod.description || 'No description';
-        const examples = mod.examples ? ` (e.g., ${mod.examples.slice(0, 2).join(', ')})` : '';
+        const description = mod.helpText || mod.description || 'No description';
+        const example = mod.example ? ` (e.g., "${mod.example}")` : '';
+        const type = mod.type ? ` [${mod.type}]` : '';
 
-        return `${index + 1}. **${key}**${examples}
+        return `${index + 1}. **${key}**${type}${example}
    ${description}`;
       }).join('\n\n');
 
@@ -1435,8 +1540,6 @@ This could be due to:
   }
 );
 
-
-
 // Start the server
 async function main() {
   try {
@@ -1446,6 +1549,13 @@ async function main() {
       logLevel: config.server.logLevel
     });
     
+    // Start health check server for Railway
+    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
+      healthServer.listen(healthCheckPort, () => {
+        logger.info(`Health check server running on port ${healthCheckPort}`);
+      });
+    }
+    
     const transport = new StdioServerTransport();
     await server.connect(transport);
     
@@ -1453,7 +1563,8 @@ async function main() {
       apiBase: ORSHOT_API_BASE,
       hasApiKey: !!DEFAULT_API_KEY,
       autoMapping: config.features.autoMapping,
-      healthCheck: config.features.healthCheck
+      healthCheck: config.features.healthCheck,
+      healthCheckPort: process.env.NODE_ENV === 'production' ? healthCheckPort : 'disabled'
     });
   } catch (error) {
     logger.error("Failed to start server", { error: error instanceof Error ? error.message : String(error) });
@@ -1464,11 +1575,17 @@ async function main() {
 // Handle graceful shutdown
 process.on('SIGINT', () => {
   logger.info("Received SIGINT, shutting down gracefully");
+  if (healthServer.listening) {
+    healthServer.close();
+  }
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   logger.info("Received SIGTERM, shutting down gracefully");
+  if (healthServer.listening) {
+    healthServer.close();
+  }
   process.exit(0);
 });
 

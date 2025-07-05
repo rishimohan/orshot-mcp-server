@@ -5,6 +5,32 @@ All notable changes to the Orshot MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2025-07-05
+
+### Added
+
+- **Studio Template Name Support** - You can now reference studio templates by name instead of just numeric IDs
+- Template name resolution for all studio template operations (generate, modifications, etc.)
+- Enhanced studio template listing with detailed information including modifications, dimensions, and thumbnails
+- Improved template modification display with better formatting and examples
+- Railway deployment optimization with health check endpoint
+- Railway configuration files (`railway.toml`, `Procfile`)
+- Comprehensive Railway deployment guide (`RAILWAY.md`)
+
+### Changed
+
+- Updated studio templates endpoint to use new `/v1/studio/templates` structure
+- Enhanced `get-studio-templates` tool to show comprehensive template information
+- Improved `get-template-modifications` tool to handle new modification structure
+- Updated all generation tools to support template name resolution
+- Removed Docker support in favor of simpler Railway deployment
+- Enhanced tool descriptions to mention template name support
+
+### Removed
+
+- Docker configuration files (`Dockerfile`, `docker-compose.yml`)
+- Outdated `index_new.ts` file
+
 ## [1.8.0] - 2025-07-05
 
 ### Added

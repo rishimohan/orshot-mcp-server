@@ -67,11 +67,34 @@ Examples:
 
 Generated images with `base64` response type are automatically displayed inline in your chat conversation!
 
+### ✨ NEW: Studio Template Name Support
+
+You can now reference studio templates by their **name** instead of just numeric IDs! This makes it much easier to work with your custom templates:
+
+```json
+// Use template name (much easier!)
+{
+  "templateId": "My Social Media Post",
+  "modifications": {
+    "headline": "Hello World!",
+    "image": "https://example.com/photo.jpg"
+  }
+}
+
+// Or still use numeric ID
+{
+  "templateId": "123",
+  "modifications": { ... }
+}
+```
+
 ### Note on Website Screenshots
 
 Website screenshots are available through the standard library templates (template ID: `website-screenshot`). Simply use the `generate-image` or `generate-image-from-library` tools with the `website-screenshot` template and provide the `websiteUrl` modification.
 
-## 🚀 Quick Start (Production)
+## 🚀 Quick Start
+
+### Local Development
 
 ```bash
 # 1. Install and build
@@ -84,7 +107,23 @@ export ORSHOT_API_KEY="your-api-key-here"
 npm start
 ```
 
-**Claude Desktop Integration:**
+### Railway Deployment (Recommended for Production)
+
+Deploy to Railway in one click:
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
+
+Or manually:
+
+1. **Connect Repository:** Fork this repo and connect it to Railway
+2. **Set Environment Variables:**
+   - `ORSHOT_API_KEY`: Your Orshot API key
+   - `NODE_ENV`: `production`
+3. **Deploy:** Railway will automatically build and deploy
+
+> **📚 Complete Railway guide:** [RAILWAY.md](./RAILWAY.md)
+
+### Claude Desktop Integration
 
 ```json
 {
@@ -142,6 +181,51 @@ Add the server to your Claude Desktop configuration in `claude_desktop_config.js
 
 ```bash
 npm start
+```
+
+## Usage Examples
+
+### Working with Studio Templates by Name
+
+```typescript
+// 1. First, get your studio templates to see available names
+await use_mcp_tool("get-studio-templates");
+
+// 2. Generate an image using template name instead of ID
+await use_mcp_tool("generate-image", {
+  templateId: "My Social Media Post",  // Use the template name!
+  modifications: {
+    headline: "Join us for the big announcement!",
+    description: "Something amazing is coming...",
+    image: "https://example.com/announcement.jpg"
+  }
+});
+
+// 3. Or use the auto-detect tool (recommended)
+await use_mcp_tool("generate-image", {
+  templateId: "Instagram Story Template",
+  modifications: {
+    profilePhoto: "https://example.com/profile.jpg",
+    username: "@myusername",
+    storyText: "Having a great day!"
+  }
+});
+```
+
+### URL Auto-Mapping for Studio Templates
+
+The server automatically maps image URLs to the correct template fields:
+
+```typescript
+// The server will automatically map these URLs to image fields
+await use_mcp_tool("generate-image", {
+  templateId: "Product Showcase",
+  modifications: {
+    productImage: "https://example.com/product.jpg",  // Will be auto-mapped
+    title: "Amazing Product",
+    price: "$29.99"
+  }
+});
 ```
 
 ## Tools

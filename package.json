@@ -1,6 +1,6 @@
 {
   "name": "orshot-mcp-server",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Production-ready Model Context Protocol server for Orshot image generation API with advanced features including auto-mapping, validation, and robust error handling",
   "type": "module",
   "main": "build/index.js",
@@ -21,8 +21,8 @@
     "health-check": "node -e \"console.log('Server health check: OK')\"",
     "audit": "npm audit --audit-level moderate",
     "security-check": "npm audit --audit-level high",
-    "prestart": "npm run build",
-    "postinstall": "npm run build"
+    "railway:build": "npm ci && npm run build",
+    "railway:start": "npm run start"
   },
   "keywords": [
     "mcp",
