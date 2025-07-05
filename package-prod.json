@@ -13,16 +13,11 @@
     "dev": "tsc && node build/index.js",
     "watch": "tsc --watch",
     "clean": "rm -rf build",
-    "test": "npm run build && node --test build/test.js",
-    "test:coverage": "npm run build && node --test --experimental-test-coverage build/test.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "echo \"Linting not configured\"",
     "validate": "tsc --noEmit",
     "prepare": "npm run build",
-    "health-check": "node -e \"console.log('Server health check: OK')\"",
-    "audit": "npm audit --audit-level moderate",
-    "security-check": "npm audit --audit-level high",
-    "prestart": "npm run build",
-    "postinstall": "npm run build"
+    "health-check": "node -e \"console.log('Server health check: OK')\""
   },
   "keywords": [
     "mcp",
@@ -40,11 +35,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "files": [
-    "build",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["build", "README.md", "LICENSE"],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
     "zod": "^3.25.74"

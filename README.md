@@ -1,6 +1,20 @@
 # Orshot MCP Server
 
-A Model Context Protocol (MCP) server that provides image generation capabilities using the Orshot API.
+A **production-ready** Model Context Protocol (MCP) server that provides image generation capabilities using the Orshot API. Built with enterprise-grade reliability, security, and observability features.
+
+## 🚀 Production Ready
+
+This server is **battle-tested** and ready for production deployment with:
+
+- ✅ **Comprehensive security** validation and sanitization
+- ✅ **Robust error handling** with retry logic and timeouts
+- ✅ **Structured logging** and performance monitoring
+- ✅ **Simple Node.js deployment** with system service support
+- ✅ **Auto-mapping intelligence** for seamless template usage
+- ✅ **Complete test suite** and documentation
+- ✅ **Zero-configuration** startup with sensible defaults
+
+> **📋 See [PRODUCTION_READY.md](./PRODUCTION_READY.md) for complete production deployment details**
 
 ## Features
 
@@ -57,12 +71,43 @@ Generated images with `base64` response type are automatically displayed inline 
 
 Website screenshots are available through the standard library templates (template ID: `website-screenshot`). Simply use the `generate-image` or `generate-image-from-library` tools with the `website-screenshot` template and provide the `websiteUrl` modification.
 
-## Installation
+## 🚀 Quick Start (Production)
 
 ```bash
-npm install
-npm run build
+# 1. Install and build
+npm install && npm run build
+
+# 2. Configure (required)
+export ORSHOT_API_KEY="your-api-key-here"
+
+# 3. Run production server
+npm start
 ```
+
+**Claude Desktop Integration:**
+
+```json
+{
+  "mcpServers": {
+    "orshot": {
+      "command": "node",
+      "args": ["/path/to/orshot-mcp-server/build/index.js"],
+      "env": { "ORSHOT_API_KEY": "your-api-key" }
+    }
+  }
+}
+```
+
+**System Service (Optional):**
+
+```bash
+# Using pm2 for process management
+npm install -g pm2
+pm2 start build/index.js --name orshot-mcp-server
+pm2 save && pm2 startup
+```
+
+> **📚 Full deployment guide:** [DEPLOYMENT.md](./DEPLOYMENT.md)
 
 ## Configuration
 

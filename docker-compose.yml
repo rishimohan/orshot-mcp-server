@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  orshot-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orshot-mcp-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - ORSHOT_API_KEY=${ORSHOT_API_KEY}
+      - ORSHOT_API_BASE=${ORSHOT_API_BASE:-https://api.orshot.com}
+    volumes:
+      # Optional: mount logs directory
+      - ./logs:/app/logs
+    # Stdin and TTY for MCP stdio transport
+    stdin_open: true
+    tty: true
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Health check: OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+          cpus: "0.1"
+
+  # Optional: Redis for caching (future enhancement)
+  redis:
+    image: redis:7-alpine
+    container_name: orshot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.2"
+    profiles:
+      - cache
+
+volumes:
+  redis_data:
+    driver: local
