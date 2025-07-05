@@ -1,7 +1,7 @@
 {
   "name": "orshot-mcp-server",
   "version": "1.9.0",
-  "description": "Production-ready Model Context Protocol server for Orshot image generation API with advanced features including auto-mapping, validation, and robust error handling",
+  "description": "Orshot's MCP Server lets you dynamically generate images from your templates from your prompts in Claude, Cursor or any app that supports MCP Servers",
   "type": "module",
   "main": "build/index.js",
   "bin": {
@@ -32,7 +32,10 @@
     "studio-templates",
     "production"
   ],
-  "author": "Orshot MCP Server Team",
+  "author": {
+    "name": "Rishi Mohan",
+    "email": "iamrishi.ms@gmail.com"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -52,10 +55,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/orshot/orshot-mcp-server.git"
+    "url": "https://github.com/rishimohan/orshot-mcp-server.git"
   },
   "bugs": {
-    "url": "https://github.com/orshot/orshot-mcp-server/issues"
+    "url": "https://github.com/rishimohan/orshot-mcp-server/issues"
   },
-  "homepage": "https://github.com/orshot/orshot-mcp-server#readme"
+  "homepage": "https://orshot.com"
 }
