@@ -1,3 +1,9 @@
+
+
+https://github.com/user-attachments/assets/1b9641ba-41cd-4f0b-9538-c71171c29e24
+
+
+
 # Orshot MCP Server
 
 [Orshot](https://orshot.com) is an Image Generation API which lets you generate dynamic images from [pre-designed and AI generated templates](https://orshot.com/templates) via [API and Integrations](https://orshot.com/integrations)
