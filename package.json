@@ -18,11 +18,10 @@
     "lint": "echo \"Linting not configured\"",
     "validate": "tsc --noEmit",
     "prepare": "npm run build",
+    "postinstall": "npm run build",
     "health-check": "node -e \"console.log('Server health check: OK')\"",
     "audit": "npm audit --audit-level moderate",
-    "security-check": "npm audit --audit-level high",
-    "railway:build": "npm ci && npm run build",
-    "railway:start": "npm run start"
+    "security-check": "npm audit --audit-level high"
   },
   "keywords": [
     "mcp",
@@ -47,11 +46,11 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
-    "zod": "^3.25.74"
+    "zod": "^3.25.74",
+    "typescript": "^5.8.3"
   },
   "devDependencies": {
-    "@types/node": "^24.0.10",
-    "typescript": "^5.8.3"
+    "@types/node": "^24.0.10"
   },
   "repository": {
     "type": "git",

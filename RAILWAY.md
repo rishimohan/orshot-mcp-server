@@ -29,7 +29,7 @@ This guide explains how to deploy the Orshot MCP Server on Railway.
 
 3. **Deploy:**
    - Railway will automatically build and deploy your application
-   - The build process uses the `railway.toml` configuration
+   - The build process uses the `nixpacks.toml` configuration and auto-detection
 
 ### Method 2: Deploy via Railway CLI
 

@@ -193,12 +193,12 @@ await use_mcp_tool("get-studio-templates");
 
 // 2. Generate an image using template name instead of ID
 await use_mcp_tool("generate-image", {
-  templateId: "My Social Media Post",  // Use the template name!
+  templateId: "My Social Media Post", // Use the template name!
   modifications: {
     headline: "Join us for the big announcement!",
     description: "Something amazing is coming...",
-    image: "https://example.com/announcement.jpg"
-  }
+    image: "https://example.com/announcement.jpg",
+  },
 });
 
 // 3. Or use the auto-detect tool (recommended)
@@ -207,8 +207,8 @@ await use_mcp_tool("generate-image", {
   modifications: {
     profilePhoto: "https://example.com/profile.jpg",
     username: "@myusername",
-    storyText: "Having a great day!"
-  }
+    storyText: "Having a great day!",
+  },
 });
 ```
 
@@ -221,10 +221,10 @@ The server automatically maps image URLs to the correct template fields:
 await use_mcp_tool("generate-image", {
   templateId: "Product Showcase",
   modifications: {
-    productImage: "https://example.com/product.jpg",  // Will be auto-mapped
+    productImage: "https://example.com/product.jpg", // Will be auto-mapped
     title: "Amazing Product",
-    price: "$29.99"
-  }
+    price: "$29.99",
+  },
 });
 ```
 
