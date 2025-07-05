@@ -1,6 +1,6 @@
 # Orshot MCP Server
 
-[Orshot](https://orshot.com) is an Image Generation API which lets you generate dynamic images from pre-designed and AI generated templates via API and Integrations
+[Orshot](https://orshot.com) is an Image Generation API which lets you generate dynamic images from [pre-designed and AI generated templates](https://orshot.com/templates) via [API and Integrations](https://orshot.com/integrations)
 
 Orshot's MCP Server lets you dynamically generate images from your templates from your prompts in Claude, Cursor or any app that supports MCP Servers
 
@@ -18,13 +18,17 @@ Add the server to your Claude Desktop configuration in `claude_desktop_config.js
 {
   "mcpServers": {
     "orshot": {
-      "command": "node", // or paste the "which node" output from terminal
+      "command": "node", // or output of "which node"
       "args": ["/path/to/orshot-mcp-server/build/index.js"], // update the path
-      "env": { "ORSHOT_API_KEY": "your-api-key" } // add your Orshot API Key
+      "env": { "ORSHOT_API_KEY": "your-api-key" } // add Orshot API Key
     }
   }
 }
 ```
+
+NOTE:
+
+- Sometimes the path for node is different if you use libraries like nvm, just run "which node" and paste the output as the value for "command"
 
 ## Examples
 
