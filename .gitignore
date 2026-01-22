@@ -12,7 +12,6 @@ pnpm-debug.log*
 .env.test.local
 .env.production.local
 .env.*.local
-.env.example
 
 # Build outputs
 dist/
@@ -61,3 +60,5 @@ temp/
 ecosystem.config.js
 *.service
 *~
+
+DEPLOYMENT.md

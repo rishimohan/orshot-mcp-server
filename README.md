@@ -1,8 +1,4 @@
-
-
 https://github.com/user-attachments/assets/1b9641ba-41cd-4f0b-9538-c71171c29e24
-
-
 
 # Orshot MCP Server
 
@@ -48,22 +44,34 @@ Here are some example prompts you can use with Orshot's MCP Server
 
 ## Features
 
-This MCP server exposes seven tools for working with Orshot:
+This MCP server exposes nine tools for working with Orshot:
 
 ### Template Discovery
 
 1. **Get Library Templates** - List all available library templates for your account
 2. **Get Studio Templates** - List all available studio templates for your account
+3. **Get Template Modifications** - Get available parameters/modifications for any template
 
-### Image Generation
+### Image & Media Generation
 
-4. **Generate Image** - Unified tool with automatic template detection (recommended)
+4. **Generate Image** - Unified tool with automatic template detection (recommended). Supports **Images (PNG, JPG, WEBP)**, **PDFs**, and **Videos (MP4, WEBM, GIF)**.
 5. **Generate Image From Library Template** - Generate images from Orshot library templates
-6. **Generate Image From Studio Template** - Generate images from Orshot Studio templates
+6. **Generate Image From Studio Template** - Generate images, PDFs or videos from Orshot Studio templates
 
-### Specialized Tools
+### Documentation & Help
 
-7. **Check API Status** - Test API connectivity and validate your API key
+7. **Get Orshot Docs** - Fetch the latest documentation directly from Orshot
+8. **List Docs Topics** - List available documentation topics
+
+### Utilities
+
+9. **Check API Status** - Test API connectivity and validate your API key
+
+### New Capabilities
+
+- **Video Generation**: Create MP4, WebM, or GIF videos from Studio templates.
+- **PDF Generation**: Generate multi-page PDFs with custom DPI and margins.
+- **Documentation Integration**: Ask the agent to look up Orshot documentation for you.
 
 ### Local Development
 

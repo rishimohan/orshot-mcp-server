@@ -2,6 +2,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import express from "express";
+import cors from "cors";
 import { readFileSync } from "fs";
 import { z } from "zod";
 import { config } from "./config.js";
@@ -422,7 +425,7 @@ async function getTemplateType(templateId: string, apiKey: string): Promise<'lib
 
     return null; // Template not found in either
   } catch (error) {
-    console.error("Error determining template type:", error);
+    logger.error("Error determining template type", { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -469,16 +472,17 @@ async function resolveStudioTemplateId(templateIdOrName: string, apiKey: string)
 // Tool 1: Generate Image From Library Template
 server.tool(
   "generate-image-from-library",
-  "Generate an image from an Orshot library template using specified modifications",
+  "Generate an image from an Orshot library template (pre-designed utility templates like website-screenshot, tweet-image, etc.) using specified modifications",
   {
     apiKey: z.string().optional().describe("Orshot API key for authentication (optional if set in environment)"),
-    templateId: z.string().describe("The ID of the library template to use"),
-    modifications: z.record(z.any()).default({}).describe("Object containing modifications to apply to the template (e.g., text replacements, color changes)"),
-    format: z.enum(["png", "jpg", "pdf"]).default("png").describe("Output format for the generated image"),
+    templateId: z.string().describe("The ID of the library template to use (e.g., 'website-screenshot', 'tweet-image', 'testimonial-screenshot')"),
+    modifications: z.record(z.any()).default({}).describe("Object containing modifications to apply to the template (e.g., text replacements, color changes, URLs)"),
+    format: z.enum(["png", "jpg", "webp", "pdf"]).default("png").describe("Output format for the generated image"),
     responseType: z.enum(["base64", "url", "binary"]).default("url").describe("Response type: base64 data, download URL, or binary data"),
+    scale: z.number().min(0.5).max(3).default(1).optional().describe("Scale factor for the output (1 = original size, 2 = double size)"),
   },
   async (args) => {
-    const { apiKey, templateId, modifications, format, responseType } = args;
+    const { apiKey, templateId, modifications, format, responseType, scale } = args;
     
     // Validate template ID
     const templateValidation = validateTemplateId(templateId);
@@ -523,7 +527,8 @@ server.tool(
       modifications: modifications,
       response: {
         type: responseType,
-        format: format
+        format: format,
+        ...(scale && { scale })
       },
       source: "orshot-mcp-server"
     };
@@ -551,18 +556,6 @@ server.tool(
     }
 
     const { data } = response;
-    
-    // Debug logging to understand response structure
-    console.error("Response debug info:", {
-      responseType,
-      hasData: !!response.data,
-      dataType: typeof response.data,
-      dataLength: response.data ? response.data.length : 0,
-      dataPrefix: response.data ? response.data.substring(0, 20) : 'none',
-      hasUrl: !!response.url,
-      taskId: response.task_id,
-      status: response.status
-    });
     
     // Create raw response display (truncate data for readability)
     const responseForDisplay = {
@@ -642,17 +635,34 @@ ${JSON.stringify(responseForDisplay, null, 2)}
 // Tool 2: Generate Image From Orshot Studio Template
 server.tool(
   "generate-image-from-studio",
-  "Generate an image from an Orshot Studio template using specified data modifications. Automatically maps URLs to appropriate image fields in the template. You can use either the template ID (numeric) or template name.",
+  "Generate an image, PDF, or video from an Orshot Studio template using specified data modifications. Automatically maps URLs to appropriate image fields in the template. You can use either the template ID (numeric) or template name. Supports multi-page templates, PDF options, and video generation.",
   {
     apiKey: z.string().optional().describe("Orshot API key for authentication (optional if set in environment)"),
     templateId: z.string().describe("The ID or name of the Orshot Studio template to use"),
     data: z.record(z.any()).default({}).describe("Object containing data to populate the template (e.g., dynamic content, variable replacements, URLs for images)"),
-    format: z.enum(["png", "jpg", "pdf"]).default("png").describe("Output format for the generated image"),
+    format: z.enum(["png", "jpg", "webp", "pdf", "mp4", "webm", "gif"]).default("png").describe("Output format: png, jpg, webp for images; pdf for documents; mp4, webm, gif for videos"),
     responseType: z.enum(["base64", "url", "binary"]).default("url").describe("Response type: base64 data, download URL, or binary data"),
+    scale: z.number().min(0.5).max(3).default(1).optional().describe("Scale factor for the output (1 = original size, 2 = double size). For PDFs, you can also use pdfOptions.dpi instead."),
+    includePages: z.array(z.number()).optional().describe("For multi-page templates: array of page numbers to include (e.g., [1, 3] renders only pages 1 and 3)"),
+    fileName: z.string().optional().describe("Custom file name for the output (without extension). For carousel templates, pages will be suffixed with -page-1, -page-2, etc."),
+    quality: z.number().min(1).max(100).optional().describe("Image quality for jpg/webp formats (1-100)"),
+    pdfOptions: z.object({
+      margin: z.string().optional().describe("PDF margin (e.g., '20px', '1in')"),
+      rangeFrom: z.number().optional().describe("Start page for PDF (null for all pages)"),
+      rangeTo: z.number().optional().describe("End page for PDF (null for all pages)"),
+      colorMode: z.enum(["rgb", "cmyk"]).optional().describe("Color mode for PDF output"),
+      dpi: z.number().optional().describe("DPI for PDF (72 is standard, 300 for print quality)")
+    }).optional().describe("PDF-specific options (only applicable when format is 'pdf')"),
+    videoOptions: z.object({
+      trimStart: z.number().optional().describe("Start time in seconds for video trim"),
+      trimEnd: z.number().optional().describe("End time in seconds for video trim"),
+      muted: z.boolean().optional().describe("Whether to mute video audio"),
+      loop: z.boolean().optional().describe("Whether to loop the video")
+    }).optional().describe("Video-specific options (only applicable when format is mp4, webm, or gif)"),
     webhook: z.string().url().optional().describe("Optional webhook URL to receive notifications when the rendering is complete"),
   },
   async (args) => {
-    const { apiKey, templateId, data, format, responseType, webhook } = args;
+    const { apiKey, templateId, data, format, responseType, scale, includePages, fileName, quality, pdfOptions, videoOptions, webhook } = args;
     const actualApiKey = apiKey || DEFAULT_API_KEY;
     
     if (!actualApiKey) {
@@ -687,10 +697,24 @@ server.tool(
       modifications: mappedData,
       response: {
         type: responseType,
-        format: format
+        format: format,
+        ...(scale && { scale }),
+        ...(includePages && { includePages }),
+        ...(fileName && { fileName }),
+        ...(quality && { quality })
       },
       source: "orshot-mcp-server"
     };
+
+    // Add PDF options if format is PDF
+    if (format === 'pdf' && pdfOptions) {
+      requestBody.pdfOptions = pdfOptions;
+    }
+
+    // Add video options if format is video
+    if (['mp4', 'webm', 'gif'].includes(format) && videoOptions) {
+      requestBody.videoOptions = videoOptions;
+    }
 
     if (webhook) {
       requestBody.webhook = webhook;
@@ -799,17 +823,34 @@ ${JSON.stringify(responseForDisplay, null, 2)}
 // Tool 3: Generate Image (Auto-detect template type)
 server.tool(
   "generate-image",
-  "Generate an image from an Orshot template (automatically detects library vs studio template). For studio templates, automatically maps URLs to appropriate image fields and supports template names.",
+  "Generate an image, PDF, or video from an Orshot template (automatically detects library vs studio template). For studio templates, automatically maps URLs to appropriate image fields and supports template names. Supports video generation (mp4, webm, gif), PDF options, and multi-page templates.",
   {
     apiKey: z.string().optional().describe("Orshot API key for authentication (optional if set in environment)"),
     templateId: z.string().describe("The ID or name of the template to use (will auto-detect if it's library or studio). Numeric IDs are likely studio templates. Studio templates can also be referenced by name."),
     modifications: z.record(z.any()).default({}).describe("Object containing modifications/data to apply to the template (works for both library and studio templates). URLs will be auto-mapped to image fields for studio templates."),
-    format: z.enum(["png", "jpg", "pdf"]).default("png").describe("Output format for the generated image"),
+    format: z.enum(["png", "jpg", "webp", "pdf", "mp4", "webm", "gif"]).default("png").describe("Output format: png, jpg, webp for images; pdf for documents; mp4, webm, gif for videos (video only for studio templates)"),
     responseType: z.enum(["base64", "url", "binary"]).default("url").describe("Response type: base64 data, download URL, or binary data"),
+    scale: z.number().min(0.5).max(3).default(1).optional().describe("Scale factor for the output (1 = original size, 2 = double size)"),
+    includePages: z.array(z.number()).optional().describe("For multi-page studio templates: array of page numbers to include (e.g., [1, 3])"),
+    fileName: z.string().optional().describe("Custom file name for the output (without extension)"),
+    quality: z.number().min(1).max(100).optional().describe("Image quality for jpg/webp formats (1-100)"),
+    pdfOptions: z.object({
+      margin: z.string().optional().describe("PDF margin (e.g., '20px', '1in')"),
+      rangeFrom: z.number().optional().describe("Start page for PDF"),
+      rangeTo: z.number().optional().describe("End page for PDF"),
+      colorMode: z.enum(["rgb", "cmyk"]).optional().describe("Color mode for PDF"),
+      dpi: z.number().optional().describe("DPI for PDF (72 standard, 300 for print)")
+    }).optional().describe("PDF-specific options (only for studio templates with format='pdf')"),
+    videoOptions: z.object({
+      trimStart: z.number().optional().describe("Start time in seconds"),
+      trimEnd: z.number().optional().describe("End time in seconds"),
+      muted: z.boolean().optional().describe("Mute audio"),
+      loop: z.boolean().optional().describe("Loop video")
+    }).optional().describe("Video options (only for studio templates with video format)"),
     webhook: z.string().url().optional().describe("Optional webhook URL to receive notifications (studio templates only)"),
   },
   async (args) => {
-    const { apiKey, templateId, modifications, format, responseType, webhook } = args;
+    const { apiKey, templateId, modifications, format, responseType, scale, includePages, fileName, quality, pdfOptions, videoOptions, webhook } = args;
     const actualApiKey = apiKey || DEFAULT_API_KEY;
     
     if (!actualApiKey) {
@@ -844,7 +885,8 @@ server.tool(
         modifications,
         response: {
           type: responseType,
-          format: format
+          format: format,
+          ...(scale && { scale })
         },
         source: "orshot-mcp-server"
       };
@@ -967,10 +1009,24 @@ ${JSON.stringify(responseForDisplay, null, 2)}
         modifications: mappedModifications, // Use auto-mapped modifications
         response: {
           type: responseType,
-          format: format
+          format: format,
+          ...(scale && { scale }),
+          ...(includePages && { includePages }),
+          ...(fileName && { fileName }),
+          ...(quality && { quality })
         },
         source: "orshot-mcp-server"
       };
+
+      // Add PDF options if format is PDF
+      if (format === 'pdf' && pdfOptions) {
+        requestBody.pdfOptions = pdfOptions;
+      }
+
+      // Add video options if format is video
+      if (['mp4', 'webm', 'gif'].includes(format) && videoOptions) {
+        requestBody.videoOptions = videoOptions;
+      }
 
       if (webhook) {
         requestBody.webhook = webhook;
@@ -1335,7 +1391,7 @@ server.tool(
             }
           }
         } catch (error) {
-          console.error("Error fetching library template modifications:", error);
+          logger.error("Error fetching library template modifications", { error: error instanceof Error ? error.message : String(error) });
         }
       } else if (detectedType === "studio") {
         // Get studio template modifications
@@ -1384,7 +1440,7 @@ server.tool(
             }
           }
         } catch (error) {
-          console.error("Error fetching studio template modifications:", error);
+          logger.error("Error fetching studio template modifications", { error: error instanceof Error ? error.message : String(error) });
         }
       }
 
@@ -1540,32 +1596,282 @@ This could be due to:
   }
 );
 
+// Documentation topics and their corresponding URLs
+const DOCS_TOPICS: Record<string, { url: string; description: string }> = {
+  "introduction": {
+    url: "https://orshot.com/docs",
+    description: "Introduction to Orshot and getting started"
+  },
+  "studio-render": {
+    url: "https://orshot.com/docs/api-reference/render-from-studio-template",
+    description: "How to render images from Studio templates"
+  },
+  "library-render": {
+    url: "https://orshot.com/docs/api-reference/render-from-template",
+    description: "How to render images from Library templates"
+  },
+  "studio-templates-list": {
+    url: "https://orshot.com/docs/api-reference/studio-templates-list",
+    description: "How to list all Studio templates"
+  },
+  "modifications": {
+    url: "https://orshot.com/docs/definitions/modifications",
+    description: "Understanding template modifications"
+  },
+  "response-format": {
+    url: "https://orshot.com/docs/definitions/response-format",
+    description: "Available response formats (png, jpg, pdf, mp4, etc.)"
+  },
+  "response-type": {
+    url: "https://orshot.com/docs/definitions/response-type",
+    description: "Response types (base64, url, binary)"
+  },
+  "dynamic-urls": {
+    url: "https://orshot.com/docs/integrations/dynamic-urls",
+    description: "Using Dynamic URLs for image generation"
+  },
+  "webhooks": {
+    url: "https://orshot.com/docs/integrations/webhooks",
+    description: "Setting up webhooks for render notifications"
+  },
+  "video-generation": {
+    url: "https://orshot.com/docs/dynamic-parameters/video",
+    description: "Video generation parameters and options"
+  },
+  "quick-start": {
+    url: "https://orshot.com/docs/quick-start/get-api-key",
+    description: "Quick start guide to get API key"
+  }
+};
+
+// Helper function to fetch and extract content from docs page
+async function fetchDocsContent(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Orshot-MCP-Server/1.0",
+        "Accept": "text/html,application/xhtml+xml"
+      }
+    });
+
+    if (!response.ok) {
+      logger.error(`Failed to fetch docs from ${url}`, { status: response.status });
+      return null;
+    }
+
+    const html = await response.text();
+    
+    // Extract main content - remove HTML tags but preserve structure
+    // This is a simple extraction - you might want to use a proper HTML parser
+    let content = html
+      // Remove script and style tags with their content
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      // Remove navigation, header, footer
+      .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, '')
+      .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, '')
+      .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, '')
+      // Convert common elements to markdown-like format
+      .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n')
+      .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n')
+      .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n### $1\n')
+      .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '\n#### $1\n')
+      .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+      .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+      .replace(/<pre[^>]*>(.*?)<\/pre>/gis, '\n```\n$1\n```\n')
+      .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+      .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+      .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+      .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+      // Remove remaining HTML tags
+      .replace(/<[^>]+>/g, '')
+      // Clean up whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\s+|\s+$/g, '')
+      // Decode HTML entities
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ');
+
+    return content;
+  } catch (error) {
+    logger.error("Error fetching docs", { url, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
+// Tool 8: Get Orshot Documentation
+server.tool(
+  "get-orshot-docs",
+  "Fetch the latest Orshot API documentation for a specific topic. Use this to learn about API endpoints, parameters, and best practices.",
+  {
+    topic: z.enum([
+      "introduction",
+      "studio-render",
+      "library-render",
+      "studio-templates-list",
+      "modifications",
+      "response-format",
+      "response-type",
+      "dynamic-urls",
+      "webhooks",
+      "video-generation",
+      "quick-start"
+    ]).describe("Documentation topic to fetch"),
+  },
+  async (args) => {
+    const { topic } = args;
+    const topicInfo = DOCS_TOPICS[topic];
+    
+    if (!topicInfo) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Unknown documentation topic: ${topic}`,
+          },
+        ],
+      };
+    }
+
+    logger.info(`Fetching docs for topic: ${topic}`, { url: topicInfo.url });
+    
+    const content = await fetchDocsContent(topicInfo.url);
+    
+    if (!content) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Failed to fetch documentation for "${topic}". 
+            
+You can view the docs directly at: ${topicInfo.url}
+
+**Topic:** ${topicInfo.description}`,
+          },
+        ],
+      };
+    }
+
+    // Truncate if too long (keep first ~8000 chars to leave room for context)
+    const maxLength = 8000;
+    const truncatedContent = content.length > maxLength 
+      ? content.substring(0, maxLength) + `\n\n... (truncated, view full docs at ${topicInfo.url})`
+      : content;
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `📚 **Orshot Documentation: ${topic}**
+
+Source: ${topicInfo.url}
+
+---
+
+${truncatedContent}`,
+        },
+      ],
+    };
+  }
+);
+
+// Tool 9: List Available Documentation Topics
+server.tool(
+  "list-docs-topics",
+  "List all available Orshot documentation topics that can be fetched",
+  {},
+  async () => {
+    const topicsList = Object.entries(DOCS_TOPICS)
+      .map(([key, info], index) => `${index + 1}. **${key}** - ${info.description}`)
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `📚 **Available Orshot Documentation Topics**
+
+${topicsList}
+
+Use the \`get-orshot-docs\` tool with any topic name to fetch the latest documentation.
+
+**Example:** \`get-orshot-docs({ topic: "studio-render" })\``,
+        },
+      ],
+    };
+  }
+);
+
 // Start the server
 async function main() {
+  const isSSE = process.env.TRANSPORT === 'sse' || process.env.RAILWAY_ENVIRONMENT;
+
   try {
     logger.info(`Starting ${config.server.name} v${config.server.version}`, {
       environment: config.server.environment,
       nodeVersion: process.version,
-      logLevel: config.server.logLevel
+      logLevel: config.server.logLevel,
+      transport: isSSE ? 'sse' : 'stdio'
     });
     
-    // Start health check server for Railway
-    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
-      healthServer.listen(healthCheckPort, () => {
-        logger.info(`Health check server running on port ${healthCheckPort}`);
+    if (isSSE) {
+      const app = express();
+      app.use(cors());
+      
+      let transport: SSEServerTransport | null = null;
+
+      app.get("/sse", async (req, res) => {
+        logger.info("New SSE connection initiated");
+        transport = new SSEServerTransport("/messages", res);
+        await server.connect(transport);
+      });
+
+      app.post("/messages", async (req, res) => {
+        if (!transport) {
+          res.sendStatus(400); 
+          return;
+        }
+        await transport.handlePostMessage(req, res);
+      });
+      
+      app.get("/health", (req, res) => {
+        res.json({ 
+          status: 'healthy', 
+          service: 'orshot-mcp-server',
+          version: config.server.version 
+        });
+      });
+
+      const port = process.env.PORT || 3000;
+      app.listen(port, () => {
+        logger.info(`Orshot MCP Server (SSE) running on port ${port}`);
+      });
+      
+    } else {
+      // Start health check server for production (non-SSE)
+      if (process.env.NODE_ENV === 'production') {
+        healthServer.listen(healthCheckPort, () => {
+          logger.info(`Health check server running on port ${healthCheckPort}`);
+        });
+      }
+      
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      
+      logger.info("Orshot MCP Server running on stdio", {
+        apiBase: ORSHOT_API_BASE,
+        hasApiKey: !!DEFAULT_API_KEY,
+        autoMapping: config.features.autoMapping,
+        healthCheck: config.features.healthCheck,
+        healthCheckPort: process.env.NODE_ENV === 'production' ? healthCheckPort : 'disabled'
       });
     }
-    
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    
-    logger.info("Orshot MCP Server running on stdio", {
-      apiBase: ORSHOT_API_BASE,
-      hasApiKey: !!DEFAULT_API_KEY,
-      autoMapping: config.features.autoMapping,
-      healthCheck: config.features.healthCheck,
-      healthCheckPort: process.env.NODE_ENV === 'production' ? healthCheckPort : 'disabled'
-    });
   } catch (error) {
     logger.error("Failed to start server", { error: error instanceof Error ? error.message : String(error) });
     process.exit(1);
