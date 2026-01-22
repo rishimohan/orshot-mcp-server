@@ -1,4 +1,4 @@
-https://github.com/user-attachments/assets/1b9641ba-41cd-4f0b-9538-c71171c29e24
+<img width="1400" height="735" alt="orshot-mcp-server" src="https://github.com/user-attachments/assets/2aaa3e58-90de-4c7d-a288-d9e9981e1e0a" />
 
 # Orshot MCP Server
 
@@ -7,6 +7,10 @@ https://github.com/user-attachments/assets/1b9641ba-41cd-4f0b-9538-c71171c29e24
 Orshot's MCP Server lets you dynamically generate images from your templates from your prompts in Claude, Cursor or any app that supports MCP Servers
 
 ## How to Use
+
+### Video Demo
+
+https://github.com/user-attachments/assets/1b9641ba-41cd-4f0b-9538-c71171c29e24
 
 ### Quick Connect (Remote)
 
