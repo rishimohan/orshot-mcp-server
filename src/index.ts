@@ -46,10 +46,6 @@ if (!DEFAULT_API_KEY && config.security.requireApiKey) {
 const server = new McpServer({
   name: config.server.name,
   version: config.server.version,
-  capabilities: {
-    resources: {},
-    tools: {},
-  },
 });
 
 // Simple health check server for Railway
