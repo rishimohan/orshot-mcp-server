@@ -2,35 +2,67 @@ https://github.com/user-attachments/assets/1b9641ba-41cd-4f0b-9538-c71171c29e24
 
 # Orshot MCP Server
 
-[Orshot](https://orshot.com) is an Image Generation API which lets you generate dynamic images from [pre-designed and AI generated templates](https://orshot.com/templates) via [API and Integrations](https://orshot.com/integrations)
+[Orshot](https://orshot.com) is an Image, PDF and Video Generation API which lets you generate dynamic images from [pre-designed and AI generated templates](https://orshot.com/templates) via [API and Integrations](https://orshot.com/integrations)
 
 Orshot's MCP Server lets you dynamically generate images from your templates from your prompts in Claude, Cursor or any app that supports MCP Servers
 
 ## How to Use
 
-### Get your API Key
+### Quick Connect (Remote)
 
-- You can [signup on Orshot](https://orshot.com/signup) to get your free API key
+The easiest way to use the Orshot MCP Server is to connect to our hosted remote server.
 
-### Claude Desktop Integration
+**Server URL:** `https://mcp.orshot.com/sse`
 
-Add the server to your Claude Desktop configuration in `claude_desktop_config.json`:
+Since the remote server is shared, you must provide your **Orshot API Key** in your prompt (e.g., "Generate a website screenshot of apple.com. Here is my API key: os-...") or configure your MCP client to send it.
+
+#### Cursor (Agent Mode)
+
+1. Settings > General > MCP Servers
+2. Add new MCP server
+3. Select **SSE** and enter `https://mcp.orshot.com/sse`
+
+#### VS Code (MCP Extension)
+
+Add to `.vscode/mcp.json` or your global configuration:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "orshot": {
-      "command": "node", // or output of "which node"
-      "args": ["/path/to/orshot-mcp-server/build/index.js"], // update the path
-      "env": { "ORSHOT_API_KEY": "your-api-key" } // add Orshot API Key
+      "type": "sse",
+      "url": "https://mcp.orshot.com/sse"
     }
   }
 }
 ```
 
-NOTE:
+### Local Installation (Advanced)
 
-- Sometimes the path for node is different if you use libraries like nvm, just run "which node" and paste the output as the value for "command"
+For developers who want to run the server locally or contribute.
+
+1. **Clone and Build**:
+
+   ```bash
+   git clone https://github.com/rishimohan/orshot-mcp-server
+   cd orshot-mcp-server
+   npm install && npm run build
+   ```
+
+2. **Configure Claude Desktop**:
+   Add to `claude_desktop_config.json`:
+
+   ```json
+   {
+     "mcpServers": {
+       "orshot": {
+         "command": "node",
+         "args": ["/absolute/path/to/orshot-mcp-server/build/index.js"],
+         "env": { "ORSHOT_API_KEY": "your-api-key" }
+       }
+     }
+   }
+   ```
 
 ## Examples
 
